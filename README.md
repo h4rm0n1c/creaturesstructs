@@ -27,6 +27,7 @@ EXACTLY the expected end position with zero unaccounted bytes**, not just
 | Sprite gallery (standard) | `c1spr.ksy` | 672 of 690 (see note below) | byte-exact, 0 remaining, all 672 |
 | Default palette | `c1palette.ksy` | 2 (`Images/palette.dta`, `Palettes/palette.dta`) | byte-exact, 0 remaining, both |
 | Standalone voice | `c1vce.ksy` | 3 (`male/female/grendel.vce`) | byte-exact to the documented 580+60-byte structure, all 3 |
+| Kit shop item catalog | `c1shopitems.ksy` | 2 (`Health`, `Aphro`) | byte-exact, 0 remaining, both |
 
 An `.exp` file is exactly a `Creature` object followed immediately by a
 `CGenome` object, back to back, with **no file header at all** -- the very
@@ -38,10 +39,25 @@ saved on its own).
 ### Known gaps, deliberately not modelled here
 
 - **World.sfc** (the full saved-world document) is architecturally the
-  same MFC-archive family as `.exp` but with a much larger, more varied
-  object graph (creatures, scenery, lifts, bubbles, ...). Not yet ported
-  to Kaitai Struct -- see this project's own from-scratch Python reference
-  parser (below) if you need it now.
+  same MFC-archive family as `.exp`, and every individual object class in
+  it (`MapData`, `Scenery`, `Vehicle`, `Lift`, `Macro`, `CEventBar`,
+  `CScore`, ...) is fully closed and field-named in this project's own
+  Python reference parser -- but the file's object arrays
+  (`non_scenery_objects`, `scenery_objects`, `running_macros`, ...) are
+  **genuinely polymorphic in a way pure declarative Kaitai Struct cannot
+  express at all**, confirmed directly against the repo's real
+  `World.sfc` specimen: `Scenery` alone is registered as a named MFC class
+  ONCE and then referenced 139 more times by a bare 2-byte numeric
+  back-reference with no class name anywhere in the stream (`Entity` 384
+  times, `SimpleObject` 139, `CGallery` 93, similarly). Resolving one of
+  those back-references requires replaying a running class-index ->
+  class-name registry built live during parsing; Kaitai's `switch-on`
+  requires compile-time-constant case values and has no mechanism for a
+  mutable registry a later field's dispatch could consult. This is an
+  architectural limit of the format description language, not a matter of
+  more modelling effort -- see this project's own from-scratch Python
+  reference parser (which tracks the registry as a real dict, exactly
+  like the retail engine does) if you need `World.sfc` parsed.
 - **`.spr`'s "phased" sub-format** (18 of 690 real `.spr` specimens -- kit
   UI animation strips like the Science Kit dosage gauges) genuinely cannot
   be described in pure declarative Kaitai Struct: every real loader for it
