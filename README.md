@@ -36,6 +36,15 @@ object. `c1exp.ksy`'s `genome` type is the exact same format as
 `c1gen.ksy`'s root type (a standalone `.gen` file is just that payload
 saved on its own).
 
+## Python reference parsers
+
+`Creatures1/python-reference/` has a full, stdlib-only Python
+implementation for every format above (the actual source each `.ksy` was
+transcribed from) plus the formats that have no Kaitai equivalent at all
+-- most notably `World.sfc` itself, and a tool that renders one to a real
+PNG of its background, with room boundaries drawn on top. See that
+directory's own README for the full list and what each one covers.
+
 ### Known gaps, deliberately not modelled here
 
 - **World.sfc** (the full saved-world document) is architecturally the
@@ -55,9 +64,9 @@ saved on its own).
   requires compile-time-constant case values and has no mechanism for a
   mutable registry a later field's dispatch could consult. This is an
   architectural limit of the format description language, not a matter of
-  more modelling effort -- see this project's own from-scratch Python
-  reference parser (which tracks the registry as a real dict, exactly
-  like the retail engine does) if you need `World.sfc` parsed.
+  more modelling effort -- see `Creatures1/python-reference/parse_sfc.py`
+  (which tracks the registry as a real dict, exactly like the retail
+  engine does) if you need `World.sfc` parsed.
 - **`.spr`'s "phased" sub-format** (18 of 690 real `.spr` specimens -- kit
   UI animation strips like the Science Kit dosage gauges) genuinely cannot
   be described in pure declarative Kaitai Struct: every real loader for it
@@ -68,18 +77,20 @@ saved on its own).
   specimens fully.
 - **`.att`** (body-part attachment points) is a plain whitespace-delimited
   ASCII text format, not a binary one -- not a good fit for Kaitai
-  Struct's stream model, so not included here even though the format
-  itself is fully closed (see the Python reference parser).
+  Struct's stream model, so no `.ksy` exists for it, even though the
+  format itself is fully closed (`Creatures1/python-reference/parse_att.py`).
 - **`.wav`** files are standard RIFF/WAVE audio -- already well covered by
-  existing general-purpose Kaitai Struct specs elsewhere; not duplicated
-  here.
+  existing general-purpose Kaitai Struct specs elsewhere, so no `.ksy` is
+  duplicated here; `Creatures1/python-reference/parse_wav.py` is included
+  anyway since, unlike a generic WAV reader, it verifies a file against
+  the real C1 engine's own specific loader behaviour.
 
 ## Provenance
 
 Every format above (except `.GNO`, a CyberLife-internal authoring artifact
 never read by any retail binary -- see `c1gno.ksy`'s own doc comment) was
 verified against the real, compiled game code via a Ghidra decompilation
-of `Creatures.exe` and all 12 official C1 kit executables, transcribed
-here from an independent Python reference-parser suite that additionally
-covers `World.sfc` in full, `.att`, `.wav`, and a few other formats not
-included in this repo for the reasons above.
+of `Creatures.exe` and all 12 official C1 kit executables. Every `.ksy`
+here was transcribed from the matching Python module in
+`Creatures1/python-reference/`, which additionally covers `World.sfc` in
+full and every other gap noted above.
