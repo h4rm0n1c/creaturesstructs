@@ -1,96 +1,57 @@
 # Creatures Structs
 
 [Kaitai Struct](https://kaitai.io/) format descriptions for the Creatures
-games. Use the [Kaitai Web IDE](https://ide.kaitai.io/) to load a `.ksy`
-here alongside a real specimen and explore it interactively.
+games. Load a `.ksy` here into the [Kaitai Web IDE](https://ide.kaitai.io/)
+alongside a real specimen to explore it.
 
 ## Creatures 1
 
-Every format below is a from-scratch rewrite, cross-checked against a live
-Ghidra decompilation of the real `Creatures.exe`/`Injector.exe`/kit
-executables -- not written from community documentation alone (though
-community sources, this project's own openc2e reimplementation, and the
-creatures.wiki GEN_files page were all used as a starting point and
-cross-checked, with corrections noted inline where the real compiled code
-disagreed with them). Every spec was compiled with the real
-`kaitai-struct-compiler` and run against every real specimen shipped with
-the game; **"byte-exact" below means the parse consumes the file to
-EXACTLY the expected end position with zero unaccounted bytes**, not just
-"doesn't crash."
+All specs below are reverse-engineered from the real compiled game
+(Ghidra decompilation of `Creatures.exe` and the C1 kit executables), and
+tested with the real `kaitai-struct-compiler` against every real specimen
+shipped with the game. "Byte-exact" means zero bytes left over after
+parsing, not just "didn't crash."
 
-| Format | File | Real specimens tested | Result |
+| Format | Spec | Specimens | Result |
 | --- | --- | --- | --- |
-| Exported creature | `c1exp.ksy` | 9 (`Aaron/Foxy/Nancy/Sid/Vixy/sandy/santa/santa2/dork.exp`, incl. a mature creature) | byte-exact, 0 remaining, all 9 |
-| Genome | `c1gen.ksy` | 14 (`Genetics/{mum,dad}*.gen`, `Gren.GEN`, `TEST.GEN`) | all reach the real `gend` terminator cleanly; remaining bytes are confirmed zero-padding to a fixed file-allocation size, not a parse gap |
-| Gene notes catalog | `c1gno.ksy` | 2 (`Genetics/{NORN,Grendel}.GNO`) | structurally confirmed against this project's own from-scratch reference parser (see Provenance) |
-| Agent package | `c1cob.ksy` | 58 (24 `.COB` + 34 `.RCB`) | byte-exact, 0 remaining, all 58 |
-| Sprite gallery (standard) | `c1spr.ksy` | 672 of 690 (see note below) | byte-exact, 0 remaining, all 672 |
-| Default palette | `c1palette.ksy` | 2 (`Images/palette.dta`, `Palettes/palette.dta`) | byte-exact, 0 remaining, both |
-| Standalone voice | `c1vce.ksy` | 3 (`male/female/grendel.vce`) | byte-exact to the documented 580+60-byte structure, all 3 |
-| Kit shop item catalog | `c1shopitems.ksy` | 2 (`Health`, `Aphro`) | byte-exact, 0 remaining, both |
+| Exported creature | `c1exp.ksy` | 9 `.exp` files | byte-exact |
+| Genome | `c1gen.ksy` | 14 `.gen` files | byte-exact to terminator |
+| Gene notes catalog | `c1gno.ksy` | 2 `.GNO` files | confirmed |
+| Agent package | `c1cob.ksy` | 58 `.cob`/`.rcb` files | byte-exact |
+| Sprite gallery (standard) | `c1spr.ksy` | 672 of 690 `.spr` files | byte-exact |
+| Default palette | `c1palette.ksy` | 2 `palette.dta` files | byte-exact |
+| Standalone voice | `c1vce.ksy` | 3 `.vce` files | byte-exact |
+| Kit shop item catalog | `c1shopitems.ksy` | `Health`, `Aphro` | byte-exact |
 
-An `.exp` file is exactly a `Creature` object followed immediately by a
-`CGenome` object, back to back, with **no file header at all** -- the very
-first two bytes of the file are already the start of the `Creature`
-object. `c1exp.ksy`'s `genome` type is the exact same format as
-`c1gen.ksy`'s root type (a standalone `.gen` file is just that payload
-saved on its own).
+A `.exp` file is just a `Creature` object followed by a `CGenome` object,
+back to back, no file header. `c1gen.ksy` is the same format as that
+`CGenome`'s payload.
 
 ## Python reference parsers
 
-`Creatures1/python-reference/` has a full, stdlib-only Python
-implementation for every format above (the actual source each `.ksy` was
-transcribed from) plus the formats that have no Kaitai equivalent at all
--- most notably `World.sfc` itself, and a tool that renders one to a real
-PNG of its background, with room boundaries drawn on top. See that
-directory's own README for the full list and what each one covers.
+`Creatures1/python-reference/` has the full Python source these specs
+were built from, plus formats with no Kaitai equivalent (see below) --
+including a tool that renders a `World.sfc`'s background and rooms to
+PNG. See that folder's README.
 
-### Known gaps, deliberately not modelled here
+## What's not here, and why
 
-- **World.sfc** (the full saved-world document) is architecturally the
-  same MFC-archive family as `.exp`, and every individual object class in
-  it (`MapData`, `Scenery`, `Vehicle`, `Lift`, `Macro`, `CEventBar`,
-  `CScore`, ...) is fully closed and field-named in this project's own
-  Python reference parser -- but the file's object arrays
-  (`non_scenery_objects`, `scenery_objects`, `running_macros`, ...) are
-  **genuinely polymorphic in a way pure declarative Kaitai Struct cannot
-  express at all**, confirmed directly against the repo's real
-  `World.sfc` specimen: `Scenery` alone is registered as a named MFC class
-  ONCE and then referenced 139 more times by a bare 2-byte numeric
-  back-reference with no class name anywhere in the stream (`Entity` 384
-  times, `SimpleObject` 139, `CGallery` 93, similarly). Resolving one of
-  those back-references requires replaying a running class-index ->
-  class-name registry built live during parsing; Kaitai's `switch-on`
-  requires compile-time-constant case values and has no mechanism for a
-  mutable registry a later field's dispatch could consult. This is an
-  architectural limit of the format description language, not a matter of
-  more modelling effort -- see `Creatures1/python-reference/parse_sfc.py`
-  (which tracks the registry as a real dict, exactly like the retail
-  engine does) if you need `World.sfc` parsed.
-- **`.spr`'s "phased" sub-format** (18 of 690 real `.spr` specimens -- kit
-  UI animation strips like the Science Kit dosage gauges) genuinely cannot
-  be described in pure declarative Kaitai Struct: every real loader for it
-  hardcodes how many image collections to read rather than storing a count
-  in the file, so the only way to recover a given file's real collection
-  count is a brute-force search for the value that lands exactly on EOF.
-  `c1spr.ksy` documents this and covers the other 672 (non-phased)
-  specimens fully.
-- **`.att`** (body-part attachment points) is a plain whitespace-delimited
-  ASCII text format, not a binary one -- not a good fit for Kaitai
-  Struct's stream model, so no `.ksy` exists for it, even though the
-  format itself is fully closed (`Creatures1/python-reference/parse_att.py`).
-- **`.wav`** files are standard RIFF/WAVE audio -- already well covered by
-  existing general-purpose Kaitai Struct specs elsewhere, so no `.ksy` is
-  duplicated here; `Creatures1/python-reference/parse_wav.py` is included
-  anyway since, unlike a generic WAV reader, it verifies a file against
-  the real C1 engine's own specific loader behaviour.
+- **World.sfc** -- can't be a pure Kaitai spec. Its object arrays reuse
+  MFC classes by numeric back-reference with no name in the stream (e.g.
+  `Scenery` is named once, then reused 139 more times); resolving that
+  needs a live class registry, which Kaitai's `switch-on` has no way to
+  express. Fully covered in `python-reference/parse_sfc.py` instead.
+- **`.spr`'s "phased" sub-format** (18 of 690 files) -- no real loader
+  stores its collection count on disk, so it's only recoverable by
+  brute-force search. `c1spr.ksy` covers the other 672 fine.
+- **`.att`** -- plain text, not binary. See `parse_att.py`.
+- **`.wav`** -- standard RIFF, already covered by other Kaitai specs.
+  `parse_wav.py` is included anyway since it checks a file against C1's
+  actual loader behavior, not generic RIFF validity.
 
 ## Provenance
 
-Every format above (except `.GNO`, a CyberLife-internal authoring artifact
-never read by any retail binary -- see `c1gno.ksy`'s own doc comment) was
-verified against the real, compiled game code via a Ghidra decompilation
-of `Creatures.exe` and all 12 official C1 kit executables. Every `.ksy`
-here was transcribed from the matching Python module in
-`Creatures1/python-reference/`, which additionally covers `World.sfc` in
-full and every other gap noted above.
+Every format here (except `.GNO`, a CyberLife authoring tool never read
+by the retail game) was verified against the real compiled game code,
+not just community docs. See each `.ksy`'s own doc comment for specifics
+and citations.
