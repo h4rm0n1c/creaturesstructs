@@ -127,15 +127,33 @@ def render_background(sfc_path, spr_path, palette_path, cols=None, rows=None):
 
 def draw_rooms(background, world, outline_width=1):
     """Returns a copy of `background` with every MapData room RECT drawn
-    on top, colour-coded by room_type and labelled "index:type"."""
+    on top, colour-coded by room_type and labelled "index:type".
+
+    C1 wraps horizontally. Keep the signed archive coordinates unchanged
+    and draw every width-translated copy intersecting the canvas. Draw the
+    original rectangle before Pillow clips it so the seam does not acquire
+    a spurious vertical wall. Vertical coordinates do not wrap.
+    """
     from PIL import ImageDraw
 
     overlay = background.copy()
     draw = ImageDraw.Draw(overlay)
     for i, (left, top, right, bottom, room_type) in enumerate(world['mapdata']['rooms']):
         color = ROOM_TYPE_COLORS.get(room_type, DEFAULT_ROOM_TYPE_COLOR)
-        draw.rectangle([left, top, right, bottom], outline=color, width=outline_width)
-        draw.text((left + 3, top + 1), f"{i}:{room_type}", fill=color)
+        if right < left or bottom < top:
+            raise ValueError(f"room {i} has inverted bounds")
+        width, height = background.size
+        if bottom < 0 or top >= height:
+            continue
+        # Inclusive outline endpoints, matching Pillow's rectangle drawing.
+        first_shift = -(right // width)
+        last_shift = (width - 1 - left) // width
+        for shift in range(first_shift, last_shift + 1):
+            x0, x1 = left + shift * width, right + shift * width
+            draw.rectangle([x0, top, x1, bottom],
+                           outline=color, width=outline_width)
+            draw.text((max(0, x0) + 3, max(0, top) + 1),
+                      f"{i}:{room_type}", fill=color)
     return overlay
 
 
