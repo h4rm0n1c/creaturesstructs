@@ -1022,13 +1022,19 @@ def parse_creature(r):
         (genome_moniker, display_name, father_moniker, mother_moniker,
         birthday, birthplace, and 4 unnamed fields)
 
-    IMPORTANT: `sleep_indicator_object` is NOT read from the archive in
-    this LOAD path at all, despite the decompile appearing to show a
-    ReadObject(SimpleObject) call for it between the matrix and voice --
-    empirically, voice starts immediately at the matrix's end with no
-    intervening tag in any of the 9 specimens tested. See 0x00407440's
-    Ghidra comment for the full evidence and discussion. This field is
-    therefore not modeled here.
+    CORRECTED 2026-09-13: `sleep_indicator_object` IS read, exactly where
+    0x00407440's decompile shows it -- a ReadObject(SimpleObject) between
+    the goal-direction matrix and voice. An earlier pass concluded it was
+    not read at all, on the strength of 9 .exp specimens, and compensated
+    with a 2-byte prefix read BEFORE the matrix. Those two readings are
+    indistinguishable whenever the indicator is null, because the prefix
+    consumes exactly the 2-byte NULL tag -- and every creature in those 9
+    specimens was awake. The moment a creature is asleep the indicator is
+    a real SimpleObject, the prefix swallows two bytes of the matrix, the
+    object body is never consumed, and the archive desynchronises from
+    that creature onward. That is a live world away, not a corner case:
+    it is exactly what broke on a 16-creature World.sfc containing one
+    sleeping norn.
 
     CGenome (see parse_cgenome) is a separate, later top-level object in
     the .exp archive, written immediately after this whole Creature
@@ -1070,25 +1076,16 @@ def parse_creature(r):
 
     instincts = [r.read_object_ref(f"Creature.instincts[{i}]") for i in range(instinct_count)]
 
-    goal_direction_weight_matrix_prefix = r.bytes_(2)
     goal_direction_weight_matrix = [r.u32() for _ in range(640)]
+    sleep_indicator_object = r.read_object_ref("Creature.sleep_indicator_object")
 
-    # CONFIRMED 2026-08-22: sleep_indicator_object is NOT actually read
-    # from the archive at all in this LOAD path, despite 0x00407440's
-    # decompile appearing to show a `ReadObject(SimpleObject)` call for
-    # it immediately before voice.Serialize(). Tested byte-exact against
-    # all 9 .exp specimens in this repo: `voice` (580 fixed bytes) starts
-    # immediately at matrix_end and its end lands EXACTLY on the
-    # independently-confirmed CCreatureRegister string start (diff=0 in
-    # every specimen) -- there is no room for a 2-byte object tag (NULL
-    # or otherwise) between them. Reading a 2-byte tag for
-    # sleep_indicator_object at either the position before OR after voice
-    # both produce a wrong, non-null tag and desync everything after it.
-    # Likely explanation: the decompile's apparent ReadObject call for
-    # this field is a real statement in the function, but either applies
-    # to a different code path (e.g. only reachable in the in-world
-    # SFCDoc path, not exercised by any .exp specimen tested here) or is
-    # a decompiler artifact merging unrelated statements -- not resolved
+    # The object reference above is the real thing: SimpleObject or NULL,
+    # per Creature::Serialize @ 0x00407440. Verified on this repo's whole
+    # corpus -- 9 .exp specimens and two World.sfc files -- all of which
+    # now parse byte-exact with zero bytes remaining, including one world
+    # the previous "not read, 2-byte prefix instead" model could not get
+    # through at all.
+
     # which, but the empirical byte evidence is unambiguous. This field
     # is therefore NOT modeled by this parser.
     voice = parse_voice_tail(r)
