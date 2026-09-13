@@ -1086,10 +1086,7 @@ def parse_creature(r):
     # the previous "not read, 2-byte prefix instead" model could not get
     # through at all.
 
-    # which, but the empirical byte evidence is unambiguous. This field
-    # is therefore NOT modeled by this parser.
     voice = parse_voice_tail(r)
-    sleep_indicator_object = None
     register_state = parse_creature_register(r)
 
     return dict(kind='Creature', skeleton_object_base=skeleton_object_base, skeleton=skeleton,
