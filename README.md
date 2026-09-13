@@ -34,6 +34,16 @@ were built from, plus formats with no Kaitai equivalent (see below) --
 including a tool that renders a `World.sfc`'s background and rooms to
 PNG. See that folder's README.
 
+## Kit protocol
+
+`Creatures1/kit-protocol/` documents how the kits (Hatchery, Science Kit,
+Injector, ...) talk to the game -- a live IPC protocol rather than a file
+format, so there's no `.ksy` for it. Every game-to-kit message turns out to
+be one OLE automation call named `Communicate`, carrying a packed header and
+a payload; kits answer back with CAOS macros shaped `inst,<dde: ...>,endm`.
+Includes `generic_kit.cpp`, a headless kit the game will launch from its own
+Tools menu that logs everything asked of it. See that folder's README.
+
 ## What's not here, and why
 
 - **World.sfc** -- can't be a pure Kaitai spec. Its object arrays reuse
@@ -48,6 +58,8 @@ PNG. See that folder's README.
 - **`.wav`** -- standard RIFF, already covered by other Kaitai specs.
   `parse_wav.py` is included anyway since it checks a file against C1's
   actual loader behavior, not generic RIFF validity.
+- **The kit protocol** -- IPC, not a file format. Documented in
+  `Creatures1/kit-protocol/` instead.
 
 ## Provenance
 
