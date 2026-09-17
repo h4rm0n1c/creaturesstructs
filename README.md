@@ -71,3 +71,10 @@ Every format here (except `.GNO`, a CyberLife authoring tool never read
 by the retail game) was verified against the real compiled game code,
 not just community docs. See each `.ksy`'s own doc comment for specifics
 and citations.
+
+One exception in kind: the retail game never reads `.cob`/`.rcb` files, so
+`c1cob.ksy` follows the only compiled loader available -- the Community
+Edition's `Injector.exe`, an mfc140 rebuild rather than a 1996 binary.
+Where it and openc2e disagree, the shipped specimens can't arbitrate (every
+one holds a single record with an empty description); the spec says so
+field by field.

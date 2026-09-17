@@ -8,132 +8,153 @@ meta:
   endian: le
   license: CC0-1.0
 doc: |
-  A Creatures 1 `.cob` (Creatures OBject) file packages one injectable
-  world object -- toy, food, gadget, seasonal decoration -- along with its
-  install/removal CAOS scripts and its toolbar icon, ready for `Injector.exe`
-  to install into a running world. `.rcb` ("removal COB") files are
-  structurally IDENTICAL to `.cob` -- confirmed via Injector.exe's real
-  `.rcb` loader (`CAgentsPage::RemoveSelectedCob`), which calls the exact
-  same `LoadInjectorCobFile` routine used for `.cob`, with no separate
-  format. This has no MFC object-tag framing at all (unlike `.exp`/
-  `.sfc`) -- it's a plain flat record, version 1 only (C1's `.cob` format
-  has no version 2; that name is reused, incompatibly, by Creatures 2).
+  A Creatures 1 `.cob` (Creatures OBject) file packages injectable world
+  objects -- toys, food, gadgets, seasonal decorations -- as CAOS scripts plus
+  a toolbar picture, for an injector kit to apply to a running world. A `.rcb`
+  ("removal COB") has the identical layout and undoes its paired `.cob`.
 
-  This spec's field layout is sourced from this project's own openc2e
-  reimplementation (`openc2e/src/fileformats/c1cobfile.cpp`), a mature,
-  independently community-maintained C1/C2/C3 engine, then corrected and
-  extended against a live Ghidra decompilation of `Creatures.exe`'s real
-  `Injector.exe`'s own `LoadInjectorCobFile` (0x00408370) and confirmed
-  byte-exact against all 24 real `.COB` and 34 real `.RCB` specimens
-  shipped with the game. Two corrections versus the plain openc2e model,
-  both confirmed directly from the real compiled loader rather than
-  guessed:
+  There is no MFC object-tag framing: the file is a count followed by that
+  many flat records. Strings use MFC's CString length prefix.
 
-  1. What openc2e reads as one `quantity_used: u32` is really two
-     separate `u16` fields in the real compiled reader -- see
-     `next_removal_script_index`/`script_execution_mode` below. (All 24
-     real specimens happen to have both halves zero, so this can't be
-     independently confirmed from data alone -- but the compiled engine's
-     own field-by-field read is stronger evidence than an untested
-     32-bit guess.)
-  2. The two script arrays' REAL behavioral roles are the reverse of
-     what their on-disk field names suggest, confirmed via Injector.exe's
-     `InjectSelectedCob` (0x00405e60): the array most people would call
-     "object_scripts" is actually the set of scripts run ONCE at install
-     time (each one a `scrp family genus species event` classifier
-     declaration -- confirmed present at the very start of `[0]` in every
-     real specimen), while the array most naturally read as
-     "install_scripts" is actually a ROTATING set of removal scripts, one
-     of which runs per activation/removal, advancing
-     `next_removal_script_index` each time.
+  PROVENANCE. The retail game never reads these files; only an injector kit
+  does. The one compiled loader available is `LoadInjectorCobFile`
+  (0x00408370) in the Community Edition's `Injector.exe` -- an mfc140 rebuild,
+  not a 1996 binary. This spec follows that loader field for field, and is
+  byte-exact against all 24 shipped `.COB` and 34 shipped `.RCB` specimens.
+  openc2e (`src/fileformats/c1cobfile.cpp`) reads the same bytes with a
+  narrower model; where the two differ, the shipped specimens cannot tell them
+  apart, because every one holds exactly one record with an empty description.
+  The loader is the stronger evidence, and its model explains two bytes
+  openc2e's leaves unexplained:
 
-  This project also found (2026-08-22) a genuine on-disk trailing NUL
-  byte after `name`, present as the literal last byte of all 24 real
-  `.COB` specimens with zero exceptions -- not modelled by openc2e's own
-  reader (which doesn't check for it) but real all the same.
+  1. The leading u2 is a RECORD COUNT, not a version. The loader reads it
+     and loops that many times, appending one object per record. openc2e
+     requires it to equal 1 and calls it `version`; every specimen holds 1.
+  2. Each record ends with a second string, `description`, shown in the
+     injector's description box ("No description available." when empty).
+     openc2e stops after `name`. In every specimen it is empty -- a single
+     zero length byte -- which is the "trailing NUL" earlier revisions of this
+     spec modelled as an unexplained constant.
+
+  THE TWO SCRIPT ARRAYS. Read from `CAgentsPage::InjectSelectedCob`
+  (0x00405e60) and `RemoveSelectedCob` (0x00406220), and confirmed live by
+  injecting "Cage Control Box" into a running world and logging every CAOS
+  script the kit sent:
+
+  - `object_scripts` run in full, in order, every time the record is applied.
+    In a `.cob` these are the object's event scripts, each a
+    `scrp family genus species event,...` definition (`scrp 2 3 14 1,...`
+    for the Cage Control Box).
+  - `activation_scripts` are the action itself. In a `.cob` that is the
+    `inst,new: simp ...,endm` that creates the object (`inst,new: simp cbox
+    2 0 9000 0,...`); in a `.rcb` it is the removal (`inst,enum 2 3 14,kill
+    targ,next,scrx 2 3 14 1,endm`), with `object_scripts` empty. Which of them
+    run depends on `activation_mode`.
+
+  Removal applies the paired `.rcb` through the same loader and runs both
+  arrays in the same order, so injection and removal are one mechanism.
+
+  An earlier revision of this spec named these arrays the other way round --
+  `install_scripts` and a rotating set of `removal_scripts` -- following
+  Ghidra field names that turned out to be guesses. openc2e's names
+  (`object_scripts`, `install_scripts`) had the roles right; `activation_scripts`
+  is used here because a `.rcb`'s second array removes rather than installs.
 seq:
-  - id: version
-    type: u2
-    valid: 1
-    doc: Only version 1 exists in real C1 data; C2's incompatible format reuses this extension.
-  - id: quantity_available
-    type: u2
-    doc: Vending-machine-style stock limit; 0xFFFF/large values typically mean unlimited in practice.
-  - id: expiration_month
-    type: u4
-  - id: expiration_day
-    type: u4
-  - id: expiration_year
-    type: u4
-  - id: num_install_scripts
+  - id: num_records
     type: u2
     doc: >
-      Despite the natural reading, this is the count of scripts run ONCE
-      at install time (see this spec's own doc header) -- confirmed via
-      Injector.exe's real InjectSelectedCob.
-  - id: num_removal_scripts
-    type: u2
-    doc: Count of the rotating one-per-activation removal scripts (see doc header).
-  - id: next_removal_script_index
-    type: u2
-    doc: >
-      Real name/split confirmed via Injector.exe's compiled
-      LoadInjectorCobFile, which reads this as its own u16 field (openc2e
-      instead reads this 4-byte region as one u32 "quantity_used").
-  - id: script_execution_mode
-    type: u2
-    doc: A real enum in Injector.exe; ONE_REMOVAL_SCRIPT_PER_ACTIVATION is a confirmed member.
-  - id: install_scripts
-    type: mfc_string
+      Number of records that follow. The loader loops on this; openc2e reads
+      it as a version and requires 1. All shipped specimens hold 1.
+  - id: records
+    type: record
     repeat: expr
-    repeat-expr: num_install_scripts
-    doc: >
-      The on-disk field usually called "object_scripts" -- run ONCE, the
-      moment the object is installed into the world. Each one starts with
-      a `scrp family genus species event` classifier declaration in every
-      real specimen -- these are per-classifier event handlers, installed
-      once and triggered by the game's event dispatcher for the object's
-      lifetime.
-  - id: removal_scripts
-    type: mfc_string
-    repeat: expr
-    repeat-expr: num_removal_scripts
-    doc: >
-      The on-disk field usually called "install_scripts" -- really a
-      rotating set, one script run per activation/removal, advancing
-      `next_removal_script_index` each time (mode-dependent). For a real
-      `.rcb` file this is typically empty, and the paired `.cob`'s uninstall
-      command(s) live here instead, run after any `install_scripts`.
-  - id: picture_width
-    type: u4
-  - id: picture_height
-    type: u4
-  - id: picture_width_check
-    type: u2
-    doc: >
-      Matches picture_width in every real specimen seen in this repo
-      (kept raw, not asserted -- at least one known community specimen
-      reportedly has 0 here instead).
-  - id: picture_data
-    size: picture_width.as<u4> * picture_height.as<u4>
-    if: picture_width > 0 and picture_height > 0
-    doc: >
-      One row at a time, 8bpp, indexed into C1's fixed default palette
-      (not stored in the file) -- but rows are stored BOTTOM-TO-TOP (row 0
-      in the byte stream is the image's LAST scanline), a classic
-      bottom-up-DIB convention.
-  - id: name
-    type: mfc_string
-    doc: The object's real in-game name, as shown in the Objects toolbar.
-  - id: trailing_nul
-    type: u1
-    valid: 0
-    doc: >
-      A real on-disk NUL terminator after `name`, confirmed present as the
-      literal last byte of all 24 real .COB specimens in this repo with
-      zero exceptions -- not modelled by the openc2e reference
-      implementation this spec is otherwise based on.
+    repeat-expr: num_records
 types:
+  record:
+    seq:
+      - id: quantity_available
+        type: u2
+        doc: >
+          Injections remaining. Per the CE Injector: 0 and every value >= 255
+          mean unlimited -- `CAgentsPage::UpdateSelectedCobUi` (0x00405c50)
+          displays "Infinite" for both, and `InjectSelectedCob` never
+          decrements them. Values 1..254 count down by one per injection in
+          `one_per_activation` mode (and drop straight to 0 in any other
+          mode). The count lives in memory only; the kit never writes it back
+          to the file. Consequence worth knowing: a 1-use object decrements to
+          0 and is then unlimited for the rest of the session.
+      - id: expiration_month
+        type: u4
+      - id: expiration_day
+        type: u4
+      - id: expiration_year
+        type: u4
+        doc: >
+          `CCobObject::IsExpired` (0x00408100): all three zero means the
+          record never expires (every shipped specimen). Otherwise day is
+          clamped to 1..31, month to 1..12, a year <= 99 means 1900 + year,
+          and the record stays valid through 23:59:59 local time on that
+          date.
+      - id: num_object_scripts
+        type: u2
+      - id: num_activation_scripts
+        type: u2
+      - id: activation_cursor
+        type: u2
+        doc: >
+          How many activations have been used, advanced by
+          `InjectSelectedCob`. openc2e reads this u2 and the next as one u32
+          `quantity_used`; the loader reads two u2 fields. Zero in every
+          specimen.
+      - id: activation_mode
+        type: u2
+        enum: activation_mode
+        doc: >
+          Zero in every specimen. Mode 0 runs ONE activation script per
+          injection, walking the array from its last entry backwards
+          (index = num_activation_scripts - activation_cursor - 1, clamped
+          at 0) and then advancing the cursor. Any other value runs every
+          activation script, sets the cursor to the array length, and
+          zeroes a limited quantity.
+      - id: object_scripts
+        type: mfc_string
+        repeat: expr
+        repeat-expr: num_object_scripts
+        doc: Run in full, in order, every time the record is applied.
+      - id: activation_scripts
+        type: mfc_string
+        repeat: expr
+        repeat-expr: num_activation_scripts
+        doc: >
+          The action -- object creation in a `.cob`, removal in a `.rcb`.
+          Before injecting, the kit scans these for the token `norn` and, if
+          present, refuses to proceed without a selected creature.
+      - id: picture_width
+        type: u4
+      - id: picture_height
+        type: u4
+      - id: picture_row_stride
+        type: u2
+        doc: >
+          `CSprite::Serialize` (0x0040d660) reads this as the sprite's row
+          stride in bytes, stored as u16. For these 8bpp pictures it equals
+          `picture_width` in every shipped specimen; openc2e notes one
+          community file (`ABK- Egg Gender.cob`) with 0. Kept raw.
+      - id: picture_data
+        size: picture_width * picture_height
+        if: picture_width > 0 and picture_height > 0
+        doc: >
+          8bpp, indexed into C1's fixed default palette (not stored in the
+          file). Rows are stored BOTTOM-TO-TOP: the first row in the stream is
+          the image's last scanline. `.rcb` files carry a 0x0 picture.
+      - id: name
+        type: mfc_string
+        doc: The object's name as shown in the injector's list.
+      - id: description
+        type: mfc_string
+        doc: >
+          Free text for the injector's description box. Empty (one zero
+          length byte) in every shipped specimen.
   mfc_string:
     doc: >
       Length-prefixed string: 1-byte length; if that byte is 0xFF (255), an
@@ -150,3 +171,6 @@ types:
         type: str
         encoding: ascii
         size: 'length1 != 0xff ? length1 : length2'
+enums:
+  activation_mode:
+    0: one_per_activation
