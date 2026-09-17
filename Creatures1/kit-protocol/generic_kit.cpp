@@ -69,10 +69,11 @@
 // ---------------------------------------------------------------------------
 // THE OTHER DIRECTION
 //
-// Kits drive the game with CAOS macros over the game's own automation object,
-// always shaped `inst,<body>,endm`.  The bodies are `dde:` subcommands, e.g.
-// `inst,dde: putv chem 66,dde: putv chem 59,endm` (Breeder's Kit).  The full
-// verb set, extracted from the shipped kit binaries, is in this folder's README.
+// Kits drive the game with CAOS over the game's own automation object, SFC.OLE:
+// CreateMacro, LoadMacro, RequestMacro, DestroyMacro.  Queries go bare
+// (`dde: getb cnam`); scripts that change the world are wrapped
+// `inst,<body>,endm`.  sfc_ole_client.cpp in this folder is that direction as a
+// runnable client, and the README has the dispatch map and the verb set.
 //
 // ---------------------------------------------------------------------------
 // LAUNCHING

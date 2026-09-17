@@ -40,9 +40,13 @@ PNG. See that folder's README.
 Injector, ...) talk to the game -- a live IPC protocol rather than a file
 format, so there's no `.ksy` for it. Every game-to-kit message turns out to
 be one OLE automation call named `Communicate`, carrying a packed header and
-a payload; kits answer back with CAOS macros shaped `inst,<dde: ...>,endm`.
-Includes `generic_kit.cpp`, a headless kit the game will launch from its own
-Tools menu that logs everything asked of it. See that folder's README.
+a payload; kits answer through the game's `SFC.OLE` object, a five-method
+`Macro` conversation over a byte-length BSTR. Also covers registration, the
+Tools-menu slot policy, and the named-pipe bridge the Community Edition uses
+under Wine. Includes `generic_kit.cpp`, a headless kit the game will launch
+from its own Tools menu that logs everything asked of it, and
+`sfc_ole_client.cpp`, which queries the running game the way a kit does. See
+that folder's README.
 
 ## What's not here, and why
 
