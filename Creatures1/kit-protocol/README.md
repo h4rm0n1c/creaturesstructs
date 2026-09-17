@@ -154,7 +154,7 @@ indexed by the mode handed to `CreateMacro`:
 | --- | --- | --- |
 | 0 | `StartMacroExecution` | queue on the world scheduler; no output |
 | 1 | `ExecuteMacroToOutputBuffer` | run to completion now and publish output |
-| 2 | `FormatBrainActivityReport` | brain activity report |
+| 2 | `FormatBrainActivityReport` | brain activity map of `targ`, the same report the DDE service's `BrainActivity` item returns -- format in [`../dde-service`](../dde-service/README.md#brainactivity) |
 | 3, 4 | `SetZeroCallbackResult` | accepted, return zero |
 
 Mode 0 is what an installer script wants (`wait`, `anim` and friends span ticks);

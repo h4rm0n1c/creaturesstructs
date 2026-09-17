@@ -48,6 +48,18 @@ from its own Tools menu that logs everything asked of it, and
 `sfc_ole_client.cpp`, which queries the running game the way a kit does. See
 that folder's README.
 
+## DDE service
+
+`Creatures1/dde-service/` documents the game's second external interface: a
+Windows DDEML service named `Vivarium`, separate from the kits' `SFC.OLE`. It
+runs CAOS for a client and answers four request items -- macro output, a brain
+activity map (three characters per active neuron, five report modes), an
+unused `BrainWiring` slot, and fourteen engine counters. Covers every
+transaction, the per-conversation macro state that carries `targ` and `var0`/
+`var1` between an `EXECUTE` and a request, exact reply byte counts, and three
+requests that crash the original. Includes `vivarium_client.cpp`. See that
+folder's README.
+
 ## What's not here, and why
 
 - **World.sfc** -- can't be a pure Kaitai spec. Its object arrays reuse
@@ -62,8 +74,8 @@ that folder's README.
 - **`.wav`** -- standard RIFF, already covered by other Kaitai specs.
   `parse_wav.py` is included anyway since it checks a file against C1's
   actual loader behavior, not generic RIFF validity.
-- **The kit protocol** -- IPC, not a file format. Documented in
-  `Creatures1/kit-protocol/` instead.
+- **The kit protocol and the DDE service** -- IPC, not file formats.
+  Documented in `Creatures1/kit-protocol/` and `Creatures1/dde-service/`.
 
 ## Provenance
 
