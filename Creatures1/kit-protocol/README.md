@@ -203,10 +203,16 @@ sub-vocabulary:
 | Inspect | `lobe` `gene` `word` `cell` |
 | Misc | `scrp` `pict` `panc` |
 
-`dde: lobe` answers in **binary**, not text: one count byte, then five bytes per
-lobe (`x`, `y`, `width`, `height` in brain-grid cells, and a flag), read from
-`CLobe` offsets 4/8/12/16/34, then a `0xff` terminator. For a standard norn that
-is 54 bytes.
+Reply shapes that are not a single field, from `Macro::ExecuteDDECommand
+@ 0x0041bcb0`:
+
+- `dde: lobe` answers in **binary**, not text: one count byte, then five bytes
+  per lobe (`x`, `y`, `width`, `height` in brain-grid cells, and a flag), read
+  from `CLobe` offsets 4/8/12/16/34, then a `0xff` terminator. For a standard
+  norn that is 54 bytes.
+- `dde: getb ctim` formats the creature's age with `"%2d:%2d"` -- space-padded,
+  so eight minutes past one hour is `" 1: 8"`, not `"1:08"`.
+- `dde: cell` writes seven integers with `"%d|%d|%d|%d|%d|%d|%d|"`.
 
 Kits also use ordinary non-`dde:` CAOS -- `new: simp/scen/crea/gene/…`,
 `stim from/shou/sign/tact/writ`, `setv`, and `app: quit`.
