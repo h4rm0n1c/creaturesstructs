@@ -132,6 +132,48 @@ def register(classname):
     return deco
 
 
+class SfcTruncated(Exception):
+    """The archive ended mid-record.
+
+    Distinguished from SfcDesync because the cause is different and so is the
+    remedy: a desync means this parser's model of some class is wrong, while a
+    truncated file means the archive was never fully written and no parser can
+    read it.  A World.sfc cut at an exact 4096-byte boundary is the usual
+    shape -- a save that was interrupted before its last block was flushed.
+    """
+
+    def __init__(self, want, offset, size):
+        self.want = want
+        self.offset = offset
+        self.size = size
+        super().__init__(
+            f"archive ends mid-record: wanted {want} byte(s) at {hex(offset)} "
+            f"but the file is only {hex(size)} ({size}) bytes"
+            + ("; size is an exact 4096-byte multiple, so this is most likely "
+               "a save interrupted before its final block was flushed"
+               if size % 4096 == 0 else ""))
+
+
+class SfcDesync(Exception):
+    """A serializer failed partway through an object.
+
+    Carries the class being parsed, the offset its body started at, and the
+    field label that reached it.  Nested dispatches chain, so the innermost
+    SfcDesync names the serializer that actually lost sync -- the outer ones
+    only show the path that got there.
+    """
+
+    def __init__(self, classname, offset, label, cause):
+        self.classname = classname
+        self.offset = offset
+        self.label = label
+        self.cause = cause
+        where = f" via {label}" if label else ""
+        super().__init__(
+            f"desync parsing {classname} starting at {hex(offset)}{where}: "
+            f"{type(cause).__name__}: {cause}")
+
+
 class Reader:
     def __init__(self, data):
         self.data = data
@@ -148,27 +190,36 @@ class Reader:
         self.registry = {}
         self.next_index = 1
 
+    def _need(self, n):
+        if self.pos + n > len(self.data):
+            raise SfcTruncated(n, self.pos, len(self.data))
+
     def u8(self):
+        self._need(1)
         v = self.data[self.pos]
         self.pos += 1
         return v
 
     def u16(self):
+        self._need(2)
         v = struct.unpack_from('<H', self.data, self.pos)[0]
         self.pos += 2
         return v
 
     def u32(self):
+        self._need(4)
         v = struct.unpack_from('<I', self.data, self.pos)[0]
         self.pos += 4
         return v
 
     def i32(self):
+        self._need(4)
         v = struct.unpack_from('<i', self.data, self.pos)[0]
         self.pos += 4
         return v
 
     def bytes_(self, n):
+        self._need(n)
         v = self.data[self.pos:self.pos + n]
         self.pos += n
         return v
@@ -252,7 +303,20 @@ class Reader:
         classname = payload
         if classname not in SERIALIZERS:
             raise NotImplementedClass(classname, self.pos, label)
-        obj = SERIALIZERS[classname](self)
+        # Report WHERE a desync happened, not just where it finally ran off
+        # the end.  A serializer that reads one byte too few leaves the
+        # cursor wrong for everything after it, so the error surfaces in some
+        # innocent later class at a nonsense offset and names the wrong
+        # culprit.  Wrapping each dispatch keeps the class name, the offset
+        # its body started at, and the enclosing field label, and chains so
+        # the innermost frame is the first thing that actually misread.
+        start = self.pos
+        try:
+            obj = SERIALIZERS[classname](self)
+        except (SfcDesync, SfcTruncated):
+            raise
+        except Exception as error:
+            raise SfcDesync(classname, start, label, error) from error
         return obj
 
 
