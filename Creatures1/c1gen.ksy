@@ -16,9 +16,9 @@ doc: |
   This is the exact same format for a standalone `.gen` file on disk and
   for the payload bytes inside a `.exp`'s `CGenome` object (see
   `c1exp.ksy`'s `genome` type) -- `CGenome::Serialize` on the `.exp` side
-  just wraps this same byte stream with a 9-byte archive prefix
-  (payload size, source filename, gender, life stage) and a length, then
-  memcpy's this exact stream in as its payload. `.gen` files in this
+  just wraps this same byte stream with a 13-byte archive prefix
+  (payload size `u4`, source filename `u4`, gender `u4`, life stage `u1`),
+  then memcpy's this exact stream in as its payload. `.gen` files in this
   project's specimens are padded to a fixed allocation size with trailing
   zero bytes after the real "gend" terminator -- that padding is expected
   and is not part of this spec.

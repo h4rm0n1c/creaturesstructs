@@ -40,7 +40,9 @@ An `.egg` (File > Export Held Egg... / Import Egg...) is one `CEgg` object:
 version, classifier (any egg, family 2 genus 5), the sex the baby hatches as,
 and the baby's genome as a nested `CGenome` -- the same record a `.exp`
 carries, whose source filename is the baby's moniker. Import makes a fresh
-hatchery egg from it; the spec's doc block covers the rules.
+hatchery egg from it. `Creatures1/egg-format/` explains the format in plain
+language, with a worked example and a small Python reader and writer. See
+that folder's README.
 
 ## Python reference parsers
 

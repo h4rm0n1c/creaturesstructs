@@ -62,7 +62,8 @@ doc: |
     48      n     payload: the .gen gene stream, ending "gend"
 
   A reader should reject any version other than 1; a later version may add
-  fields after `sex`. Tested byte-exact (zero bytes left over) against
+  fields after `sex`. `egg-format/README.md` explains all of this in prose,
+  with a worked example. Tested byte-exact (zero bytes left over) against
   `c1egg.egg`, a norn egg exported from a running LibreCreatures world.
 seq:
   - id: egg_tag
