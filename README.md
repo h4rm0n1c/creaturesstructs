@@ -38,6 +38,7 @@ game. They are built from the same MFC archive records as the originals.
 
 An `.egg` (File > Export Held Egg... / Import Egg...) is one `CEgg` object:
 version, classifier (any egg, family 2 genus 5), the sex the baby hatches as,
+the genome's size and CRC-32 so a file can be checked before it is parsed,
 and the baby's genome as a nested `CGenome` -- the same record a `.exp`
 carries, whose source filename is the baby's moniker. Import makes a fresh
 hatchery egg from it. `Creatures1/egg-format/` explains the format in plain

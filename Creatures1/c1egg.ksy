@@ -39,30 +39,42 @@ doc: |
   exactly one top-level object, a `CEgg`, whose last field is a nested
   object reference to its `CGenome`. In a file written by LibreCreatures
   both tags are always `0xFFFF` ("new class"), each with schema 1 and its
-  class name, because each class appears once. The `CGenome` record is the
-  same one a `.exp` carries, byte for byte, and its payload is an ordinary
-  `.gen` gene stream (`c1gen.ksy`).
+  class name, because each class appears once, so the layout is fixed. The
+  `CGenome` record is the same one a `.exp` carries, byte for byte, and its
+  payload is an ordinary `.gen` gene stream (`c1gen.ksy`).
+
+  The `CEgg` header also records the genome's byte count and its CRC-32
+  (the standard IEEE/zlib CRC over the payload bytes), so a reader can check
+  a file completely before parsing it.
 
     offset  size  field
     0       2     0xFFFF  new-class tag
     2       2     1       schema
     4       2     4       class-name length
     6       4     "CEgg"
-    10      4     version (1)
+    10      4     version (2)
     14      4     classifier (event | species<<8 | genus<<16 | family<<24)
     18      4     sex (1 male, 2 female)
-    22      2     0xFFFF  new-class tag
-    24      2     1       schema
-    26      2     7       class-name length
-    28      7     "CGenome"
-    35      4     payload size (n)
-    39      4     source filename -- the moniker, four ASCII bytes
-    43      4     genome sex (1 male, 2 female; matches the egg's)
-    47      1     life stage (0 for an egg)
-    48      n     payload: the .gen gene stream, ending "gend"
+    22      4     genome size (n)
+    26      4     CRC-32 of the n payload bytes
+    30      2     0xFFFF  new-class tag
+    32      2     1       schema
+    34      2     7       class-name length
+    36      7     "CGenome"
+    43      4     payload size (n again)
+    47      4     source filename -- the moniker, four ASCII letters or digits
+    51      4     genome sex (1 male, 2 female; matches the egg's)
+    55      1     life stage (0 for an egg)
+    56      n     payload: the .gen gene stream, starting "gene"
 
-  A reader should reject any version other than 1; a later version may add
-  fields after `sex`. `egg-format/README.md` explains all of this in prose,
+  The file is exactly 56 + n bytes, and n is at most 1 MiB. LibreCreatures
+  refuses a file unless every one of these holds before parsing any of it:
+  the size is in range, both class records are exact, the version is 2,
+  the classifier is an egg's, the sex is 1 or 2, both sizes equal n and the
+  file is 56 + n bytes, the moniker is four ASCII letters or digits (it
+  becomes a filename), the payload starts "gene", and the CRC matches.
+  Version 1, which had no size or CRC, is no longer read. A later version
+  may add fields after the CRC. `egg-format/README.md` explains all of this in prose,
   with a worked example. Tested byte-exact (zero bytes left over) against
   `c1egg.egg`, a norn egg exported from a running LibreCreatures world.
 seq:
@@ -82,12 +94,21 @@ types:
     seq:
       - id: version
         type: u4
-        valid: 1
+        valid: 2
       - id: classifier
         type: classifier
       - id: sex
         type: u4
         enum: sex
+      - id: genome_size
+        type: u4
+        valid:
+          max: 1048576
+      - id: genome_crc32
+        type: u4
+        doc: >
+          CRC-32 (IEEE 802.3, as zlib computes it) of the genome's payload
+          bytes. Kaitai has no CRC; check it after parsing.
       - id: genome_tag
         contents: [0xff, 0xff]
       - id: genome_schema
@@ -120,6 +141,7 @@ types:
     seq:
       - id: payload_size
         type: u4
+        valid: _parent.genome_size
       - id: moniker
         type: str
         encoding: ascii

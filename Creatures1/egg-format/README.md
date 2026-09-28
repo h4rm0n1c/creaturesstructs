@@ -45,9 +45,10 @@ depend on the old world's layout. On import the egg starts fresh instead (see
 
 ## The layout
 
-There is no file header or magic number. Like a `.exp`, the file is an MFC
+There is no separate file header. Like a `.exp`, the file is an MFC
 `CArchive` stream, the serialisation Microsoft's MFC library uses, and it
-starts straight away with an object. It holds one object, a `CEgg`, and the
+starts straight away with an object. Its first ten bytes are always the same,
+so they work as a signature. It holds one object, a `CEgg`, and the
 last thing inside the `CEgg` is a second object, the `CGenome` holding the
 baby's genes. All numbers are little-endian.
 
@@ -66,10 +67,15 @@ After the class record come the object's own fields.
 
 | Bytes | Field | Notes |
 | --- | --- | --- |
-| 4 | version | Always 1 for now. A reader should refuse any other number. |
+| 4 | version | 2. A reader should refuse any other number. |
 | 4 | classifier | One byte each, in this order: event, species, genus, family. Genus must be 5 and family 2; any species is allowed. |
 | 4 | sex | 1 male, 2 female. |
+| 4 | genome size | How many genome bytes the file carries. |
+| 4 | genome CRC | A CRC-32 of those genome bytes. |
 | ... | genome | A `CGenome` object, with its own class record. |
+
+The CRC is the standard CRC-32 used by zip files and zlib. Python has it as
+`zlib.crc32`.
 
 ### `CGenome`
 
@@ -77,23 +83,53 @@ This is exactly the genome record a `.exp` file carries, unchanged.
 
 | Bytes | Field | Notes |
 | --- | --- | --- |
-| 4 | payload size | How many genome bytes follow the header. |
-| 4 | moniker | Four ASCII characters, as they appear in the filename (`0JRM` for `0JRM.gen`). |
+| 4 | payload size | The same number as the genome size above. |
+| 4 | moniker | Four ASCII letters or digits, as they appear in the filename (`8QJM` for `8QJM.gen`). |
 | 4 | sex | Same as the egg's sex. |
 | 1 | life stage | 0 for an unhatched baby. |
 | n | payload | The genome itself, byte for byte what a `.gen` file holds: gene records starting `gene`, ending `gend`. |
 
-The file ends right after the payload. Nothing is padded or trailing.
+The file ends right after the payload. Nothing is padded or trailing, so a
+file is always exactly 56 bytes plus the genome.
+
+## Why the file checks itself
+
+People rename things. Sooner or later someone renames a video, a picture or
+another game's save to `.egg` and imports it, just to see what happens. A
+careless reader would believe whatever numbers it found in that file, and a
+"genome size" of four billion would have it trying to swallow four gigabytes.
+A file can also be damaged on the way from one computer to another.
+
+So before LibreCreatures parses any of a file, it checks all of it, using
+only the file's bytes:
+
+1. The file is between 64 bytes and 56 bytes plus 1 MB long. A real norn's
+   genome is about 8 KB, so the limit is generous.
+2. It starts with the exact `CEgg` class record, and the version is 2.
+3. The classifier is an egg's (family 2, genus 5), and the sex is 1 or 2.
+4. The genome size in the `CEgg` header, the payload size in the `CGenome`
+   record, and the file's real length all agree.
+5. The `CGenome` class record is exact.
+6. The moniker is four ASCII letters or digits. It becomes the name of a file
+   in the world's `Genetics` folder, so it must not contain anything like
+   `..\` that could put that file somewhere else.
+7. The genome starts with `gene`.
+8. The CRC of the genome matches the one in the header.
+
+If any check fails, the game says the file isn't an egg it can read, and
+leaves the file alone. No number in the file is used until it has been
+checked against the file's real length. Export holds every file it writes to
+the same checks, so anything the game exports can be imported again.
 
 ## A worked example
 
-Here are the first 52 bytes of [`../c1egg.egg`](../c1egg.egg), a male norn egg:
+Here are the first 60 bytes of [`../c1egg.egg`](../c1egg.egg), a male norn egg:
 
 ```
-00000000: ffff 0100 0400 4345 6767 0100 0000 0002  ......CEgg......
-00000010: 0502 0100 0000 ffff 0100 0700 4347 656e  ............CGen
-00000020: 6f6d 65ac 1e00 0030 4a52 4d01 0000 0000  ome....0JRM.....
-00000030: 6765 6e65                                gene
+00000000: ffff 0100 0400 4345 6767 0200 0000 0002  ......CEgg......
+00000010: 0502 0100 0000 ac1e 0000 d443 59ba ffff  ...........CY...
+00000020: 0100 0700 4347 656e 6f6d 65ac 1e00 0038  ....CGenome....8
+00000030: 514a 4d01 0000 0000 6765 6e65            QJM.....gene
 ```
 
 Reading it byte by byte:
@@ -104,83 +140,74 @@ Reading it byte by byte:
 | 2 | `01 00` | ...schema 1... |
 | 4 | `04 00` | ...name 4 bytes long... |
 | 6 | `43 45 67 67` | ...`CEgg` |
-| 10 | `01 00 00 00` | version 1 |
+| 10 | `02 00 00 00` | version 2 |
 | 14 | `00 02 05 02` | classifier: event 0, species 2, genus 5, family 2, so a norn egg (2 5 2) |
 | 18 | `01 00 00 00` | sex 1, male |
-| 22 | `FF FF 01 00 07 00` | new class, schema 1, name 7 bytes long... |
-| 28 | `43 47 65 6E 6F 6D 65` | ...`CGenome` |
-| 35 | `AC 1E 00 00` | payload size 0x1EAC = 7,852 bytes |
-| 39 | `30 4A 52 4D` | moniker `0JRM` |
-| 43 | `01 00 00 00` | sex 1, male |
-| 47 | `00` | life stage 0 |
-| 48 | `67 65 6E 65 ...` | the genome, starting with its first `gene` |
+| 22 | `AC 1E 00 00` | genome size 0x1EAC = 7,852 bytes |
+| 26 | `D4 43 59 BA` | genome CRC 0xBA5943D4 |
+| 30 | `FF FF 01 00 07 00` | new class, schema 1, name 7 bytes long... |
+| 36 | `43 47 65 6E 6F 6D 65` | ...`CGenome` |
+| 43 | `AC 1E 00 00` | payload size, 7,852 again |
+| 47 | `38 51 4A 4D` | moniker `8QJM` |
+| 51 | `01 00 00 00` | sex 1, male |
+| 55 | `00` | life stage 0 |
+| 56 | `67 65 6E 65 ...` | the genome, starting with its first `gene` |
 
-The payload runs 7,852 bytes to offset 7,900, which is the end of the file.
+The file is 56 + 7,852 = 7,908 bytes long, and the CRC-32 of the last 7,852
+bytes is 0xBA5943D4.
 
 ## Reading and writing one
 
-A reader needs no MFC and no Creatures code. This Python reads a file written
-by LibreCreatures:
+A reader needs no MFC and no Creatures code. This Python reads a file and
+makes the same checks the game does, in the same order:
 
 ```python
 import struct
+import zlib
+
+HEADER = 56
+MAX_GENOME = 1 << 20
+EGG_CLASS = b"\xff\xff\x01\x00\x04\x00CEgg"
+GENOME_CLASS = b"\xff\xff\x01\x00\x07\x00CGenome"
 
 def read_egg(data: bytes) -> dict:
-    """Read a LibreCreatures .egg file."""
-    pos = 0
-
-    def take(fmt):
-        nonlocal pos
-        values = struct.unpack_from(fmt, data, pos)
-        pos += struct.calcsize(fmt)
-        return values
-
-    def new_class(expected):
-        nonlocal pos
-        tag, schema, length = take("<HHH")
-        name = data[pos:pos + length].decode("ascii")
-        pos += length
-        if tag != 0xFFFF or schema != 1 or name != expected:
-            raise ValueError(f"expected a new {expected} record")
-
-    new_class("CEgg")
-    version, classifier, sex = take("<III")
-    if version != 1:
-        raise ValueError(f"unsupported .egg version {version}")
-    family = classifier >> 24
-    genus = (classifier >> 16) & 0xFF
-    species = (classifier >> 8) & 0xFF
-    if (family, genus) != (2, 5):
+    """Read a LibreCreatures .egg file, or raise ValueError."""
+    if not HEADER + 8 <= len(data) <= HEADER + MAX_GENOME:
+        raise ValueError("wrong size for an egg")
+    if data[:10] != EGG_CLASS:
         raise ValueError("not an egg")
-
-    new_class("CGenome")
-    size, = take("<I")
-    moniker = data[pos:pos + 4].decode("ascii")
-    pos += 4
-    genome_sex, life_stage = take("<IB")
-    genome = data[pos:pos + size]
-    pos += size
-    if pos != len(data):
-        raise ValueError("trailing bytes after the genome")
-
-    return {"classifier": (family, genus, species), "sex": sex,
-            "moniker": moniker, "genome_sex": genome_sex,
-            "life_stage": life_stage, "genome": genome}
+    version, classifier, sex, size, crc = struct.unpack_from("<5I", data, 10)
+    if version != 2:
+        raise ValueError(f"unsupported .egg version {version}")
+    family, genus = classifier >> 24, (classifier >> 16) & 0xFF
+    if (family, genus) != (2, 5) or sex not in (1, 2):
+        raise ValueError("not an egg")
+    payload_size, = struct.unpack_from("<I", data, 43)
+    if size != len(data) - HEADER or payload_size != size or data[30:43] != GENOME_CLASS:
+        raise ValueError("sizes do not agree")
+    moniker = data[47:51]
+    if not (moniker.isascii() and moniker.isalnum()):
+        raise ValueError("unsafe moniker")
+    genome = data[HEADER:]
+    if genome[:4] != b"gene" or zlib.crc32(genome) != crc:
+        raise ValueError("genome is damaged")
+    genome_sex, = struct.unpack_from("<I", data, 51)
+    return {"classifier": (family, genus, (classifier >> 8) & 0xFF),
+            "sex": sex, "moniker": moniker.decode("ascii"),
+            "genome_sex": genome_sex, "life_stage": data[55],
+            "genome": genome}
 ```
 
-Writing one is simpler still. This makes an `.egg` from any `.gen` file, so a
-tool can hand out eggs without running the game:
+Writing one is simpler. This makes an `.egg` from any `.gen` file, so a tool
+can hand out eggs without running the game:
 
 ```python
 def write_egg(genome: bytes, moniker: str, sex: int, species: int = 2) -> bytes:
     """Build a LibreCreatures .egg from a .gen file's bytes."""
-    def new_class(name):
-        return struct.pack("<HHH", 0xFFFF, 1, len(name)) + name.encode("ascii")
-
     classifier = (2 << 24) | (5 << 16) | (species << 8)
-    return (new_class("CEgg")
-            + struct.pack("<III", 1, classifier, sex)
-            + new_class("CGenome")
+    return (EGG_CLASS
+            + struct.pack("<5I", 2, classifier, sex, len(genome), zlib.crc32(genome))
+            + GENOME_CLASS
             + struct.pack("<I", len(genome))
             + moniker.encode("ascii")
             + struct.pack("<IB", sex, 0)
@@ -190,8 +217,8 @@ def write_egg(genome: bytes, moniker: str, sex: int, species: int = 2) -> bytes:
 Both have been checked against the example file: `read_egg` reads it, and
 feeding what it returns back into `write_egg` rebuilds the file exactly.
 
-A hand-made egg should use a moniker of four characters that are safe in a
-filename. It doesn't have to be unique, because importing fixes clashes.
+A hand-made egg needs a moniker of four ASCII letters or digits. It doesn't
+have to be unique, because importing fixes clashes.
 
 ## Exporting
 
@@ -200,7 +227,8 @@ you save:
 
 1. The egg's classifier, `obv1` sex, and the genome file named by its `obv0`
    moniker are written to the file. If that genome file is missing from the
-   world's `Genetics` folder, nothing is written and you're told why.
+   world's `Genetics` folder, or the finished file wouldn't pass the checks
+   above, nothing is written and you're told why.
 2. The egg is removed from the world, and the hand is freed.
 
 An export moves the egg, just as exporting a creature does. The genome file
@@ -210,19 +238,21 @@ stays in the old world's `Genetics` folder.
 
 **Import Egg...** reads the file and:
 
-1. **Checks the moniker.** The moniker is taken if the importing world
+1. **Checks the file** as described in [Why the file checks itself](#why-the-file-checks-itself).
+   If anything is wrong, it stops there and keeps the file.
+2. **Checks the moniker.** The moniker is taken if the importing world
    already has a creature or another egg using it, or a genome file of that
    name holding different genes. If it's taken, the baby gets a new random
    moniker. Its genes don't change, but the game treats it as a separate
    individual. A genome file with the *same* genes under the same name is not
    a clash; that just means the egg has come home.
-2. **Writes the genome** into the world's `Genetics` folder under the (possibly
+3. **Writes the genome** into the world's `Genetics` folder under the (possibly
    new) moniker.
-3. **Lays a fresh egg**, the same as one from the Hatchery: full size, with one
+4. **Lays a fresh egg**, the same as one from the Hatchery: full size, with one
    of the six hatchery egg pictures chosen at random, and a new hatch timer
    (2400 ticks). It is set down at spawn in the kitchen, by the incubator,
    where the Hatchery leaves its eggs, and the camera moves to show it.
-4. **Deletes the file.** The egg is in the world now, so the file is used up,
+5. **Deletes the file.** The egg is in the world now, so the file is used up,
    the same way importing a creature uses up its `.exp`. A file that can't be
    read is left alone.
 
@@ -234,9 +264,10 @@ the new moniker, if there was a clash) and the sex the file recorded.
 - **Any egg.** The format and the game accept any family 2 genus 5 egg, not
   just norns. An egg only hatches properly if the world it lands in has
   scripts for that kind of egg, and every standard world has them for norns.
-- **Versions.** Version 1 is the only version. If a later one adds fields, they
-  will come after the sex and before the genome, and older readers should
-  refuse the file rather than misread it.
+- **Versions.** The current version is 2. Version 1 had no genome size or CRC;
+  it only ever existed during development and is no longer read. If a later
+  version adds fields, they will come after the CRC and before the genome,
+  and older readers should refuse the file rather than misread it.
 - **Relationship to `.exp`.** An `.exp` is a `Creature` object followed by a
   `CGenome`. An `.egg` is a `CEgg` object that contains a `CGenome`. The
   `CGenome` record is identical in both.
